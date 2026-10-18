@@ -298,15 +298,55 @@ class TestAnalyzerSchemaFallback(unittest.TestCase):
 
         self.assertEqual(getattr(context.exception, "details", {}).get("reason"), "ambiguous_json")
 
-    def test_validate_json_response_rejects_generic_fence_with_outside_text(self) -> None:
+    def test_validate_json_response_accepts_generic_fence_with_outside_text(self) -> None:
+        analyzer = GeminiAnalyzer.__new__(GeminiAnalyzer)
+        analyzer._config_override = SimpleNamespace(generation_backend="litellm")
+
+        analyzer._validate_json_response("""Here is the JSON:
+```
+{"sentiment_score": 70, "trend_prediction": "看多"}
+```
+Let me know if you need anything else.""")
+
+    def test_extract_json_tolerates_prose_around_bare_object(self) -> None:
+        analyzer = GeminiAnalyzer.__new__(GeminiAnalyzer)
+
+        json_str, data = analyzer._extract_analysis_json_object(
+            '以下是分析结果：\n{"sentiment_score": 30, "trend_prediction": "看空"}\n以上仅供参考。'
+        )
+
+        self.assertEqual(data["sentiment_score"], 30)
+        self.assertEqual(json.loads(json_str)["trend_prediction"], "看空")
+
+    def test_extract_json_accepts_backticks_inside_string_values(self) -> None:
+        analyzer = GeminiAnalyzer.__new__(GeminiAnalyzer)
+
+        _json_str, data = analyzer._extract_analysis_json_object(
+            '{"sentiment_score": 55, "analysis_summary": "use ```code``` sparingly"}'
+        )
+
+        self.assertEqual(data["analysis_summary"], "use ```code``` sparingly")
+
+    def test_validate_json_response_rejects_fence_with_second_json_outside(self) -> None:
         analyzer = GeminiAnalyzer.__new__(GeminiAnalyzer)
         analyzer._config_override = SimpleNamespace(generation_backend="litellm")
 
         with self.assertRaises(Exception) as context:
-            analyzer._validate_json_response("""Here is the JSON:
+            analyzer._validate_json_response("""```json
+{"sentiment_score": 70}
 ```
-{"sentiment_score": 70, "trend_prediction": "看多"}
-```""")
+Revised: {"sentiment_score": 80}""")
+
+        self.assertEqual(getattr(context.exception, "details", {}).get("reason"), "ambiguous_json")
+
+    def test_validate_json_response_rejects_two_objects_in_prose(self) -> None:
+        analyzer = GeminiAnalyzer.__new__(GeminiAnalyzer)
+        analyzer._config_override = SimpleNamespace(generation_backend="litellm")
+
+        with self.assertRaises(Exception) as context:
+            analyzer._validate_json_response(
+                'Draft: {"sentiment_score": 70} Final: {"sentiment_score": 80}'
+            )
 
         self.assertEqual(getattr(context.exception, "details", {}).get("reason"), "ambiguous_json")
 
