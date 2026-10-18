@@ -3655,7 +3655,7 @@ class StockAnalysisPipeline:
                 save_report = getattr(self.notifier, "save_report_to_file", None)
                 if callable(save_report):
                     try:
-                        date_str = datetime.now().strftime('%Y%m%d')
+                        date_str = datetime.now().strftime('%Y%m%d%H%M')
                         filename = f"report_{date_str}_{stock_code}.md"
                         filepath = save_report(report_content, filename=filename)
                         logger.info(f"[{stock_code}] 单股报告已保存到本地: {filepath}")
@@ -3775,7 +3775,7 @@ class StockAnalysisPipeline:
     @staticmethod
     def _default_report_filename() -> str:
         """Build default local report filename (aligned with notifier defaults)."""
-        date_str = datetime.now().strftime('%Y%m%d')
+        date_str = datetime.now().strftime('%Y%m%d%H%M')
         return f"report_{date_str}.md"
 
     @staticmethod
@@ -4036,7 +4036,7 @@ class StockAnalysisPipeline:
                     if channel == NotificationChannel.FEISHU:
                         def _send_feishu_report() -> bool:
                             if getattr(self.notifier, "_feishu_send_as_file", False):
-                                date_str = datetime.now().strftime('%Y%m%d')
+                                date_str = datetime.now().strftime('%Y%m%d%H%M')
                                 filepath = self.notifier.save_report_to_file(
                                     strip_hidden_markdown_metadata(report).strip(),
                                     filename=f"dashboard_{date_str}.md",

@@ -316,7 +316,7 @@ def run_market_review(
             )
             if save_report_file:
                 # 保存报告到文件
-                date_str = datetime.now().strftime('%Y%m%d')
+                date_str = datetime.now().strftime('%Y%m%d%H%M')
                 report_filename = f"market_review_{date_str}.md"
                 filepath = notifier.save_report_to_file(
                     markdown_report,

@@ -1884,7 +1884,7 @@ class NotificationService(
         lines.extend([
             "---",
             f"*{labels['not_investment_advice']}*",
-            f"*{labels['details_report_hint']} reports/report_{report_date.replace('-', '')}.md*"
+            f"*{labels['details_report_hint']} reports/report_{report_date.replace('-', '')}*.md*"
         ])
 
         content = "\n".join(lines)
@@ -2593,7 +2593,7 @@ class NotificationService(
             return self.send_to_wechat(content)
         if channel == NotificationChannel.FEISHU:
             if getattr(self, "_feishu_send_as_file", False) and route_type == "report":
-                date_str = datetime.now().strftime('%Y%m%d')
+                date_str = datetime.now().strftime('%Y%m%d%H%M')
                 filepath = self.save_report_to_file(
                     sanitized_content, filename=f"report_{date_str}.md"
                 )
@@ -2907,7 +2907,7 @@ class NotificationService(
         from pathlib import Path
 
         if filename is None:
-            date_str = datetime.now().strftime('%Y%m%d')
+            date_str = datetime.now().strftime('%Y%m%d%H%M')
             filename = f"report_{date_str}.md"
 
         # 确保 reports 目录存在（使用项目根目录下的 reports）

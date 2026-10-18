@@ -757,7 +757,7 @@ def _save_reused_market_review_report(
     if not any(body.startswith(item) for item in ("# 🎯 大盘复盘", "# 🎯 Market Review")):
         body = f"{title}\n\n{body}"
     try:
-        date_str = datetime.now().strftime('%Y%m%d')
+        date_str = datetime.now().strftime('%Y%m%d%H%M')
         report_filename = f"market_review_{date_str}.md"
         filepath = notifier.save_report_to_file(body, report_filename)
         logger.info(
