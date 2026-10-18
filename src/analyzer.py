@@ -5301,6 +5301,14 @@ Output the complete Decision Dashboard in JSON format."""
         if not stripped:
             raise ValueError("empty_response")
 
+        # A response that is exactly one JSON object is accepted as-is, even when
+        # string values contain ``` (which would otherwise look like fences).
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                return stripped, self._load_analysis_json_candidate(stripped)
+            except json.JSONDecodeError:
+                pass
+
         fence_pattern = re.compile(
             r"```[ \t]*(?P<lang>[A-Za-z0-9_-]*)[ \t]*\n?(?P<body>.*?)```",
             flags=re.DOTALL,
@@ -5310,14 +5318,20 @@ Output the complete Decision Dashboard in JSON format."""
             raise ValueError("ambiguous_json")
         if len(fenced_matches) == 1:
             match = fenced_matches[0]
-            outside = (text[:match.start()] + text[match.end():]).strip()
-            if outside:
-                raise ValueError("ambiguous_json")
             fence_lang = (match.group("lang") or "").strip().lower()
             if fence_lang not in {"", "json"}:
                 raise ValueError("ambiguous_json")
+            # Prose around a single JSON fence is tolerated; a second JSON object is not.
+            outside = text[:match.start()] + "\n" + text[match.end():]
+            if self._find_top_level_json_objects(outside):
+                raise ValueError("ambiguous_json")
             json_str = match.group("body").strip()
             data = self._load_analysis_json_candidate(json_str)
+            if outside.strip():
+                logger.info(
+                    "[LLM JSON] discarded %d chars of text around the JSON fence",
+                    len(outside.strip()),
+                )
             return json_str, data
         if "```" in text:
             raise ValueError("ambiguous_json")
@@ -5325,9 +5339,19 @@ Output the complete Decision Dashboard in JSON format."""
         try:
             data = self._load_analysis_json_candidate(stripped)
         except json.JSONDecodeError as exc:
-            if self._contains_embedded_json_object(text):
+            spans = self._find_top_level_json_objects(text)
+            if len(spans) > 1:
                 raise ValueError("ambiguous_json") from exc
-            raise
+            if not spans:
+                raise
+            start, end = spans[0]
+            json_str = text[start:end]
+            data = self._load_analysis_json_candidate(json_str)
+            logger.info(
+                "[LLM JSON] discarded %d chars of text around the JSON object",
+                len((text[:start] + text[end:]).strip()),
+            )
+            return json_str, data
         return stripped, data
 
     def _load_analysis_json_candidate(self, json_str: str) -> Dict[str, Any]:
@@ -5352,22 +5376,21 @@ Output the complete Decision Dashboard in JSON format."""
         return data
 
     @staticmethod
-    def _contains_embedded_json_object(text: str) -> bool:
+    def _find_top_level_json_objects(text: str) -> List[Tuple[int, int]]:
+        """Return (start, end) spans of non-empty top-level JSON objects in text."""
         decoder = json.JSONDecoder()
-        count = 0
-        for index, char in enumerate(text):
-            if char != "{":
-                continue
+        spans: List[Tuple[int, int]] = []
+        index = text.find("{")
+        while index >= 0:
             try:
-                _obj, end = decoder.raw_decode(text[index:])
+                obj, end = decoder.raw_decode(text, index)
             except json.JSONDecodeError:
+                index = text.find("{", index + 1)
                 continue
-            count += 1
-            before = text[:index].strip()
-            after = text[index + end:].strip()
-            if count > 1 or before or after:
-                return True
-        return False
+            if isinstance(obj, dict) and obj:
+                spans.append((index, end))
+            index = text.find("{", end)
+        return spans
 
     def _validate_analysis_minimal_contract(self, data: Dict[str, Any]) -> None:
         try:
