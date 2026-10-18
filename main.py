@@ -1002,6 +1002,12 @@ def run_full_analysis(
                 logger.info("Futu 持仓经交易日过滤后无可分析股票，跳过个股分析。")
             results = []
         else:
+            if portfolio_stock_codes is not None:
+                stock_source = "portfolio"
+            elif using_config_stock_list:
+                stock_source = "watchlist"
+            else:
+                stock_source = "manual"
             results = pipeline.run(
                 stock_codes=stock_codes,
                 dry_run=args.dry_run,
@@ -1009,6 +1015,7 @@ def run_full_analysis(
                 merge_notification=merge_notification,
                 current_time=analysis_reference_time,
                 analysis_targets=analysis_targets,
+                stock_source=stock_source,
             )
 
         if should_use_daily_market_context and not market_context_summary:

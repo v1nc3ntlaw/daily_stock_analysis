@@ -2496,6 +2496,7 @@ class MainScheduleModeTestCase(unittest.TestCase):
             merge_notification=True,
             current_time=unittest.mock.ANY,
             analysis_targets=None,
+            stock_source="manual",
         )
         notifier_message = pipeline.notifier.send.call_args.args[0]
         self.assertIn("## 完整大盘复盘", notifier_message)

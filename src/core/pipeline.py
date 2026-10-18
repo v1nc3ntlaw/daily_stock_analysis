@@ -13,6 +13,7 @@ A股自选股智能分析系统 - 核心分析流水线
 
 import logging
 import inspect
+import re
 import threading
 import time
 from pathlib import Path
@@ -3403,6 +3404,7 @@ class StockAnalysisPipeline:
         merge_notification: bool = False,
         current_time: Optional[datetime] = None,
         analysis_targets: Optional[List[AnalysisTarget]] = None,
+        stock_source: Optional[str] = None,
     ) -> List[AnalysisResult]:
         """
         运行完整的分析流程
@@ -3420,6 +3422,8 @@ class StockAnalysisPipeline:
             merge_notification: 是否合并推送（跳过本次推送，由 main 层合并个股+大盘后统一发送，Issue #190）
             current_time: 本轮运行冻结的参考时间；为空时在 run 内生成
             analysis_targets: 与 stock_codes 对齐的结构化分析目标列表（可选，指数目标用于推导 market=cn 与能力矩阵）
+            stock_source: 股票列表来源（manual / watchlist / portfolio），用于报告文件名；
+                为空时未传 stock_codes 视为 watchlist，否则视为 manual
 
         Returns:
             分析结果列表
@@ -3430,6 +3434,8 @@ class StockAnalysisPipeline:
         if stock_codes is None:
             self.config.refresh_stock_list()
             stock_codes = self.config.stock_list
+            stock_source = stock_source or "watchlist"
+        self._report_stock_source = stock_source or "manual"
         
         if not stock_codes:
             logger.error("未配置自选股列表，请在 .env 文件中设置 STOCK_LIST")
@@ -3468,6 +3474,7 @@ class StockAnalysisPipeline:
                 logger.warning("批次中所有目标均 unsupported，无任务可执行")
                 return []
 
+        report_filename = self._build_report_filename(stock_codes, self._report_stock_source)
         logger.info(f"===== 开始分析 {len(stock_codes)} 只股票 =====")
         logger.info(f"股票列表: {', '.join(stock_codes)}")
         logger.info(f"并发数: {self.max_workers}, 模式: {'仅获取数据' if dry_run else '完整分析'}")
@@ -3607,7 +3614,7 @@ class StockAnalysisPipeline:
         
         # 保存报告到本地文件（无论是否推送通知都保存）
         if results and not dry_run:
-            self._save_local_report(results, report_type)
+            self._save_local_report(results, report_type, filename=report_filename)
 
         # 发送通知（单股推送模式下跳过汇总推送，避免重复）
         if results and send_notification and not dry_run:
@@ -3656,7 +3663,9 @@ class StockAnalysisPipeline:
                 if callable(save_report):
                     try:
                         date_str = datetime.now().strftime('%Y%m%d%H%M')
-                        filename = f"report_{date_str}_{stock_code}.md"
+                        source = getattr(self, "_report_stock_source", None) or "manual"
+                        code = self._sanitize_report_code(stock_code)
+                        filename = f"report_{date_str}_{source}_{code}_single.md"
                         filepath = save_report(report_content, filename=filename)
                         logger.info(f"[{stock_code}] 单股报告已保存到本地: {filepath}")
                     except Exception as exc:
@@ -3735,6 +3744,7 @@ class StockAnalysisPipeline:
         self,
         results: List[AnalysisResult],
         report_type: ReportType = ReportType.SIMPLE,
+        filename: Optional[str] = None,
     ) -> Optional[str]:
         """保存分析报告到本地文件（与通知推送解耦）"""
         self._last_local_report_path = None
@@ -3748,7 +3758,7 @@ class StockAnalysisPipeline:
             return None
 
         try:
-            filepath = self.notifier.save_report_to_file(report)
+            filepath = self.notifier.save_report_to_file(report, filename=filename)
             if filepath:
                 filepath = str(filepath)
                 self._last_local_report_path = filepath
@@ -3761,7 +3771,7 @@ class StockAnalysisPipeline:
             logger.error(f"保存本地报告失败: {e}")
 
         logger.warning("尝试回退到本地文件系统路径保存聚合报告")
-        fallback_path = self._fallback_save_report_to_file(report)
+        fallback_path = self._fallback_save_report_to_file(report, filename=filename)
         if fallback_path:
             self._last_local_report_path = fallback_path
             self._last_local_report_error = None
@@ -3777,6 +3787,26 @@ class StockAnalysisPipeline:
         """Build default local report filename (aligned with notifier defaults)."""
         date_str = datetime.now().strftime('%Y%m%d%H%M')
         return f"report_{date_str}.md"
+
+    @staticmethod
+    def _sanitize_report_code(code: str) -> str:
+        """Keep only ASCII letters and digits of a stock code for filenames."""
+        return re.sub(r"[^0-9A-Za-z]", "", str(code or ""))
+
+    @classmethod
+    def _build_report_filename(
+        cls,
+        stock_codes: List[str],
+        stock_source: Optional[str] = None,
+    ) -> str:
+        """report_<YYYYMMDDHHMM>_<source>_<CODE|Nstocks>.md; failed stocks still count."""
+        date_str = datetime.now().strftime('%Y%m%d%H%M')
+        codes = list(stock_codes or [])
+        if len(codes) == 1 and cls._sanitize_report_code(codes[0]):
+            subject = cls._sanitize_report_code(codes[0])
+        else:
+            subject = f"{len(codes)}stocks"
+        return f"report_{date_str}_{stock_source or 'manual'}_{subject}.md"
 
     @staticmethod
     def _report_output_dir() -> Path:
