@@ -163,7 +163,7 @@ class TestPipelineSingleStockNotify(unittest.TestCase):
         pipeline.notifier.generate_brief_report.assert_called_once_with([result])
         save_call = pipeline.notifier.save_report_to_file.call_args
         self.assertEqual(save_call.args[0], "brief:600519")
-        self.assertEqual(save_call.kwargs["filename"], "report_20300102_600519.md")
+        self.assertEqual(save_call.kwargs["filename"], "report_203001021200_600519.md")
         pipeline.notifier.send.assert_called_once_with(
             "brief:600519",
             email_stock_codes=["600519"],
@@ -193,7 +193,7 @@ class TestPipelineSingleStockNotify(unittest.TestCase):
         self.assertIsNotNone(result)
         save_call = pipeline.notifier.save_report_to_file.call_args
         self.assertEqual(save_call.args[0], "single:600519")
-        self.assertEqual(save_call.kwargs["filename"], "report_20300102_600519.md")
+        self.assertEqual(save_call.kwargs["filename"], "report_203001021200_600519.md")
         pipeline.notifier.send.assert_not_called()
 
     def test_process_single_stock_updates_saved_diagnostics_after_notification(self):
